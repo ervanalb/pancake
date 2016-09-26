@@ -20,6 +20,12 @@ class Canvas(QtWidgets.QWidget):
         self.scale = 1.
         self.translate = np.array([0., 0.])
         self.drag_view = None
+        self.drag_features = None
+
+        self.bg_color = Qt.white
+        self.line_color = Qt.blue
+        self.line_color_selected = Qt.green
+        self.line_width = 2
 
     def initUI(self):
         pass
@@ -38,7 +44,7 @@ class Canvas(QtWidgets.QWidget):
         qp = QtGui.QPainter()
         qp.begin(self)
         qp.scale(self.dpi_scale, self.dpi_scale)
-        for f in self.features:
+        for f in reversed(self.features):
             f.draw(self, event, qp)
         qp.end()
 
@@ -49,25 +55,31 @@ class Canvas(QtWidgets.QWidget):
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
-            pos = np.array([event.x(), event.y()]) / self.dpi_scale
+            self.drag_features = np.array([event.x(), event.y()]) / self.dpi_scale
             for f in self.features:
-                if f.mousePressEvent(self, pos):
+                f.deselect()
+
+            for f in self.features:
+                if f.hit(self, self.drag_features, behavior="set"):
                     break
+            self.update()
         elif event.button() == Qt.RightButton:
             self.drag_view = np.array([event.x(), event.y()])
 
     def mouseReleaseEvent(self, event):
         if event.button() == Qt.LeftButton:
-            pos = np.array([event.x(), event.y()]) / self.dpi_scale
-            for f in self.features:
-                f.mouseReleaseEvent(self, pos)
+            self.drag_features = None
         elif event.button() == Qt.RightButton:
             self.drag_view = None
 
     def mouseMoveEvent(self, event):
-        pos = np.array([event.x(), event.y()]) / self.dpi_scale
-        for f in self.features:
-            f.mouseMoveEvent(self, pos)
+        if self.drag_features is not None:
+            pos = np.array([event.x(), event.y()]) / self.dpi_scale
+            delta = (pos - self.drag_features) / self.scale
+            self.drag_features = pos
+            for f in self.features:
+                f.drag(self, delta)
+            self.update()
 
         if self.drag_view is not None:
             pos = np.array([event.x(), event.y()])
@@ -109,7 +121,7 @@ def main():
         constraints.Distance(c.features[0].p1, c.features[0].p2, d),
         constraints.Distance(c.features[1].p1, c.features[1].p2, d),
         constraints.Distance(c.features[2].p1, c.features[2].p2, d),
-        #constraints.FixedY(c.features[0].p2, 0),
+        constraints.FixedY(c.features[0].p2, 0),
     ]
 
     sys.exit(app.exec_())

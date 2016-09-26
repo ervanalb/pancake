@@ -83,4 +83,3 @@ def solve(eqs):
 
         for (xv, v) in zip(x, variables_list):
             v.value = xv
-    return i
