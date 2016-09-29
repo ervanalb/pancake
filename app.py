@@ -7,6 +7,9 @@ import constraints
 import solver
 import numpy as np
 
+def flatten_feature_tree(features):
+    return [f2 for f in features for f2 in flatten_feature_tree(f.children) + [f]]
+
 class Canvas(QtWidgets.QWidget):
     STANDARD_DPI = 96
     SCROLL_FACTOR = 1.01
@@ -36,6 +39,12 @@ class Canvas(QtWidgets.QWidget):
     def xfy(self, y):
         return (y + self.translate[1]) * self.scale
 
+    def ixfx(self, x):
+        return x / self.scale - self.translate[0]
+
+    def ixfy(self, y):
+        return y / self.scale - self.translate[1]
+
     def recalculate(self):
         solver.solve(self.constraints)
 
@@ -44,7 +53,7 @@ class Canvas(QtWidgets.QWidget):
         qp = QtGui.QPainter()
         qp.begin(self)
         qp.scale(self.dpi_scale, self.dpi_scale)
-        for f in reversed(self.features):
+        for f in reversed(flatten_feature_tree(self.features)):
             f.draw(self, event, qp)
         qp.end()
 
@@ -55,13 +64,17 @@ class Canvas(QtWidgets.QWidget):
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
-            self.drag_features = np.array([event.x(), event.y()]) / self.dpi_scale
-            for f in self.features:
-                f.deselect()
+            pos = np.array([event.x(), event.y()]) / self.dpi_scale
+            self.drag_features = np.array([self.ixfx(pos[0]), self.ixfy(pos[1])])
+            for f in flatten_feature_tree(self.features):
+                f.selected = False
 
-            for f in self.features:
-                if f.hit(self, self.drag_features, behavior="set"):
+            for f in flatten_feature_tree(self.features):
+                if f.hit(self, pos):
+                    f.selected = True
+                    f.start_drag(self, self.drag_features)
                     break
+
             self.update()
         elif event.button() == Qt.RightButton:
             self.drag_view = np.array([event.x(), event.y()])
@@ -75,10 +88,11 @@ class Canvas(QtWidgets.QWidget):
     def mouseMoveEvent(self, event):
         if self.drag_features is not None:
             pos = np.array([event.x(), event.y()]) / self.dpi_scale
-            delta = (pos - self.drag_features) / self.scale
-            self.drag_features = pos
-            for f in self.features:
-                f.drag(self, delta)
+            pos = np.array([self.ixfx(pos[0]), self.ixfy(pos[1])])
+
+            for f in flatten_feature_tree(self.features):
+                if f.selected:
+                    f.drag(self, pos)
             self.update()
 
         if self.drag_view is not None:
@@ -102,26 +116,13 @@ def main():
     w.show()
 
     c.features = [
-        features.Line(0, 0, 0, 10),
-        features.Line(0, 0, 5, 10),
-        features.Line(0, 10, 5, 10)
+        features.Polygon([(0, 0), (10, 0), (10, 10)])
     ]
 
-    d = solver.Variable(1, "d")
-
     c.constraints = [
-        constraints.FixedX(c.features[0].p1, 0),
-        constraints.FixedY(c.features[0].p1, 0),
-        constraints.Equal(c.features[0].p1.x, c.features[1].p1.x),
-        constraints.Equal(c.features[0].p1.y, c.features[1].p1.y),
-        constraints.Equal(c.features[0].p2.x, c.features[2].p1.x),
-        constraints.Equal(c.features[0].p2.y, c.features[2].p1.y),
-        constraints.Equal(c.features[1].p2.x, c.features[2].p2.x),
-        constraints.Equal(c.features[1].p2.y, c.features[2].p2.y),
-        constraints.Distance(c.features[0].p1, c.features[0].p2, d),
-        constraints.Distance(c.features[1].p1, c.features[1].p2, d),
-        constraints.Distance(c.features[2].p1, c.features[2].p2, d),
-        constraints.FixedY(c.features[0].p2, 0),
+        constraints.FixedDistance(c.features[0].ps[0], c.features[0].ps[1], 10),
+        constraints.FixedDistance(c.features[0].ps[1], c.features[0].ps[2], 10),
+        constraints.FixedDistance(c.features[0].ps[2], c.features[0].ps[0], 10)
     ]
 
     sys.exit(app.exec_())

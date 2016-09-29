@@ -4,27 +4,6 @@ from PyQt5 import QtGui
 from PyQt5.QtCore import Qt
 import numpy as np
 
-def selection(selected, hit, behavior=None):
-    if behavior == "set":
-        return hit
-    elif behavior == "add":
-        return selected or hit
-    elif behavior == "sub":
-        return selected and not hit
-    elif behavior == "toggle":
-        return selected != hit
-    return selected
-
-class Feature:
-    def mousePressEvent(self, canvas, pos):
-        return False
-
-    def mouseReleaseEvent(self, canvas, pos):
-        pass
-
-    def mouseMoveEvent(self, canvas, pos):
-        pass
-
 class Point:
     def __init__(self, x, y, name=None):
         self.x = Variable(x, "{}.x".format(name) if name is not None else None)
@@ -32,6 +11,7 @@ class Point:
         self.name = name
         self.handle_size = 10
         self.selected = False
+        self.children = []
 
     def __str__(self):
         if self.name is not None:
@@ -47,23 +27,32 @@ class Point:
         qp.fillRect(*params, canvas.bg_color)
         qp.drawRect(*params)
 
-    def hit(self, canvas, pos, behavior=None):
-        hit = np.all(np.abs(pos - np.array([canvas.xfx(self.x.value), canvas.xfy(self.y.value)])) < self.handle_size / 2)
-        self.selected = selection(self.selected, hit, behavior)
-        return hit
+    def hit(self, canvas, pos):
+        return np.all(np.abs(pos - np.array([canvas.xfx(self.x.value), canvas.xfy(self.y.value)])) < self.handle_size / 2)
 
-    def drag(self, canvas, delta_pos):
-        if self.selected:
-            self.x.value += delta_pos[0]
-            self.y.value += delta_pos[1]
+    def start_drag(self, canvas, pos):
+        self.drag_start_mouse = pos
+        self.drag_start_point = np.array([self.x.value, self.y.value])
 
-    def deselect(self):
-        self.selected = False
+    def drag(self, canvas, pos):
+        new_pos = pos - self.drag_start_mouse + self.drag_start_point
+        self.x.value = new_pos[0]
+        self.y.value = new_pos[1]
 
 class Line:
-    def __init__(self, x1, y1, x2, y2, name=None):
-        self.p1 = Point(x1, y1, "{}.1".format(name) if name is not None else None)
-        self.p2 = Point(x2, y2, "{}.2".format(name) if name is not None else None)
+    def __init__(self, *args, name=None):
+        if len(args) == 4:
+            (x1, y1, x2, y2) = args
+            self.p1 = Point(x1, y1, "{}.1".format(name) if name is not None else None)
+            self.p2 = Point(x2, y2, "{}.2".format(name) if name is not None else None)
+            self.children = [self.p1, self.p2]
+        elif len(args) == 2:
+            (p1, p2) = args
+            self.p1 = p1
+            self.p2 = p2
+            self.children = [] # assume children are already handled
+        else:
+            assert False
         self.name = name
         self.handle_size = 10
         self.selected = False
@@ -71,15 +60,8 @@ class Line:
     def draw(self, canvas, event, qp):
         qp.setPen(QtGui.QPen(canvas.line_color_selected if self.selected else canvas.line_color, canvas.line_width))
         qp.drawLine(canvas.xfx(self.p1.x.value), canvas.xfy(self.p1.y.value), canvas.xfx(self.p2.x.value), canvas.xfy(self.p2.y.value))
-        self.p2.draw(canvas, event, qp)
-        self.p1.draw(canvas, event, qp)
 
-    def hit(self, canvas, pos, behavior=None):
-        if self.p1.hit(canvas, pos, behavior):
-            return True
-        if self.p2.hit(canvas, pos, behavior):
-            return True
-
+    def hit(self, canvas, pos):
         p1 = np.array([canvas.xfx(self.p1.x.value), canvas.xfy(self.p1.y.value)])
         p2 = np.array([canvas.xfx(self.p2.x.value), canvas.xfy(self.p2.y.value)])
 
@@ -89,21 +71,37 @@ class Line:
         n = np.linalg.norm(pv - v * dp)
 
         hit = v > 0 and v < 1 and n < self.handle_size / 2
-        self.selected = selection(self.selected, hit, behavior)
         return hit
 
-    def drag(self, canvas, delta_pos):
-        if self.selected:
-            self.p1.x.value += delta_pos[0]
-            self.p1.y.value += delta_pos[1]
-            self.p2.x.value += delta_pos[0]
-            self.p2.y.value += delta_pos[1]
-        else:
-            self.p1.drag(canvas, delta_pos)
-            self.p2.drag(canvas, delta_pos)
+    def start_drag(self, canvas, pos):
+        self.p1.start_drag(canvas, pos)
+        self.p2.start_drag(canvas, pos)
 
-    def deselect(self):
+    def drag(self, canvas, pos):
+        self.p1.drag(canvas, pos)
+        self.p2.drag(canvas, pos)
+
+class Polygon:
+    def __init__(self, points, name=None):
+        assert len(points) >= 2
+        self.ps = [Point(*p) for p in points]
+        self.ls = [Line(p1, p2) for (p1, p2) in zip(self.ps[0:-1], self.ps[1:])] + [Line(self.ps[-1], self.ps[0])]
         self.selected = False
-        self.p1.deselect()
-        self.p2.deselect()
 
+    def hit(self, canvas, pos):
+        return any([c.hit(canvas, pos) for c in self.children])
+
+    def start_drag(self, canvas, pos):
+        for p in self.ps:
+            p.start_drag(canvas, pos)
+
+    def drag(self, canvas, pos):
+        for p in self.ps:
+            p.drag(canvas, pos)
+
+    def draw(self, canvas, event, qp):
+        pass
+
+    @property
+    def children(self):
+        return self.ps + self.ls
