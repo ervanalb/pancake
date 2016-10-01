@@ -5,10 +5,8 @@ class FixedDistance:
         self.dist = dist
         self.p1 = p1
         self.p2 = p2
-
-    @property
-    def variables(self):
-        return [self.p1.x, self.p1.y, self.p2.x, self.p2.y]
+        self.features = {self.p1, self.p2}
+        self.variables = [self.p1.x, self.p1.y, self.p2.x, self.p2.y]
 
     def f(self, variables):
         p1x = variables[self.p1.x]
@@ -36,10 +34,8 @@ class Distance:
         self.dist = dist
         self.p1 = p1
         self.p2 = p2
-
-    @property
-    def variables(self):
-        return [self.p1.x, self.p1.y, self.p2.x, self.p2.y, self.dist]
+        self.features = {self.p1, self.p2, self.dist}
+        self.variables = [self.p1.x, self.p1.y, self.p2.x, self.p2.y, self.dist]
 
     def f(self, variables):
         p1x = variables[self.p1.x]
@@ -69,10 +65,8 @@ class Fixed:
     def __init__(self, var, val):
         self.var = var
         self.val = val
-
-    @property
-    def variables(self):
-        return [self.var]
+        self.features = {self.var}
+        self.variables = [self.var]
 
     def f(self, variables):
         v = variables[self.var]
@@ -90,10 +84,8 @@ class Equal:
     def __init__(self, var1, var2):
         self.var1 = var1
         self.var2 = var2
-
-    @property
-    def variables(self):
-        return [self.var1, self.var2]
+        self.features = {self.var1, self.var2}
+        self.variables = [self.var1, self.var2]
 
     def f(self, variables):
         v1 = variables[self.var1]
@@ -113,15 +105,19 @@ class Equal:
 class FixedX(Fixed):
     def __init__(self, p, x):
         super().__init__(p.x, x)
+        self.features = {p}
 
 class FixedY(Fixed):
     def __init__(self, p, y):
         super().__init__(p.y, y)
+        self.features = {p}
 
 class Vertical(Equal):
     def __init__(self, p1, p2):
         super().__init__(p1.x, p2.x)
+        self.features = {p1, p2}
 
 class Horizontal(Equal):
     def __init__(self, p1, p2):
         super().__init__(p1.y, p2.y)
+        self.features = {p1, p2}

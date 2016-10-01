@@ -7,18 +7,14 @@ import constraints
 import solver
 import numpy as np
 
-def flatten_feature_tree(features):
-    return [f2 for f in features for f2 in flatten_feature_tree(f.children) + [f]]
-
 class Canvas(QtWidgets.QWidget):
     STANDARD_DPI = 96
-    SCROLL_FACTOR = 1.01
+    SCROLL_FACTOR = 1.001
 
     def __init__(self):
         super().__init__()
         self.initUI()
-        self.features = []
-        self.constraints = []
+        self.scene = features.Scene()
         self.dpi_scale = QtWidgets.QApplication.screens()[0].logicalDotsPerInch() / self.STANDARD_DPI
         self.scale = 1.
         self.translate = np.array([0., 0.])
@@ -46,15 +42,14 @@ class Canvas(QtWidgets.QWidget):
         return y / self.scale - self.translate[1]
 
     def recalculate(self):
-        solver.solve(self.constraints)
+        solver.solve(self.scene.constraints)
 
     def paintEvent(self, event):
         self.recalculate()
         qp = QtGui.QPainter()
         qp.begin(self)
         qp.scale(self.dpi_scale, self.dpi_scale)
-        for f in reversed(flatten_feature_tree(self.features)):
-            f.draw(self, event, qp)
+        self.scene.draw(self, event, qp)
         qp.end()
 
     def wheelEvent(self, event):
@@ -62,14 +57,17 @@ class Canvas(QtWidgets.QWidget):
         self.scale *= factor
         self.update()
 
+    def keyPressEvent(self, event):
+        pass
+
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
             pos = np.array([event.x(), event.y()]) / self.dpi_scale
             self.drag_features = np.array([self.ixfx(pos[0]), self.ixfy(pos[1])])
-            for f in flatten_feature_tree(self.features):
+            for f in self.scene.flat_tree:
                 f.selected = False
 
-            for f in flatten_feature_tree(self.features):
+            for f in self.scene.flat_tree:
                 if f.hit(self, pos):
                     f.selected = True
                     f.start_drag(self, self.drag_features)
@@ -90,7 +88,7 @@ class Canvas(QtWidgets.QWidget):
             pos = np.array([event.x(), event.y()]) / self.dpi_scale
             pos = np.array([self.ixfx(pos[0]), self.ixfy(pos[1])])
 
-            for f in flatten_feature_tree(self.features):
+            for f in self.scene.flat_tree:
                 if f.selected:
                     f.drag(self, pos)
             self.update()
@@ -115,14 +113,14 @@ def main():
     w.setLayout(vbox)
     w.show()
 
-    c.features = [
-        features.Polygon([(0, 0), (10, 0), (10, 10)])
+    c.scene.children = [
+        features.Polygon([(0, 0), (10, 0), (10, 10), (0, 10)])
     ]
 
-    c.constraints = [
-        constraints.FixedDistance(c.features[0].ps[0], c.features[0].ps[1], 10),
-        constraints.FixedDistance(c.features[0].ps[1], c.features[0].ps[2], 10),
-        constraints.FixedDistance(c.features[0].ps[2], c.features[0].ps[0], 10)
+    c.scene.constraints = [
+        constraints.FixedDistance(c.scene.children[0].ps[0], c.scene.children[0].ps[1], 10),
+        constraints.FixedDistance(c.scene.children[0].ps[1], c.scene.children[0].ps[2], 10),
+        constraints.FixedDistance(c.scene.children[0].ps[2], c.scene.children[0].ps[0], 10)
     ]
 
     sys.exit(app.exec_())
