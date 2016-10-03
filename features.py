@@ -19,6 +19,14 @@ class Feature:
     def hit(self, canvas, pos):
         return any([c.hit(canvas, pos) for c in self.children])
 
+    def delete_child(self, c):
+        """ This method should delete child c from this feature's children. It should
+        return as a set any additional children that were deleted. If deletion of the given
+        child should cause this feature to be deleted entirely, self is returned.
+        """
+
+        return set()
+
 class Point(Feature):
     def __init__(self, x, y, name=None):
         super().__init__()
@@ -102,7 +110,7 @@ class Line(Feature):
         self.p2.drag(canvas, pos)
 
     def delete_child(self, c):
-        return {self}
+        return self
 
 class Polygon(Feature):
     def __init__(self, points, name=None):
@@ -130,22 +138,22 @@ class Polygon(Feature):
     def delete_child(self, c):
         if c in self.ps:
             if len(self.ps) == 2:
-                return {self}
+                return self
             else:
                 i = self.ps.index(c)
                 self.ls[i - 1].p2 = self.ls[i].p2
-                ret = {self.ps[i], self.ls[i]}
+                ret = {self.ls[i]}
                 del self.ps[i]
                 del self.ls[i]
                 return ret
 
         elif c in self.ls:
             if len(self.ls) == 2:
-                return {self}
+                return self
             else:
                 i = self.ls.index(c)
                 self.ls[i - 1].p2 = self.ls[i + 1].p2
-                ret = {self.ps[i], self.ps[(i + 1) % len(self.ps)], self.ls[i]}
+                ret = {self.ps[i], self.ps[(i + 1) % len(self.ps)]}
                 del self.ps[i]
                 del self.ps[(i + 1) % len(self.ps)]
                 del self.ls[i]
@@ -165,13 +173,42 @@ class Scene(Feature):
     def children(self, value):
         self._children = value
 
-    def delete_child(self, feature):
-        pass
-
     def draw(self, canvas, event, qp):
         for c in reversed(self.children):
             c.draw(canvas, event, qp)
 
+    def delete_child(self, feature):
+        self._children.remove(feature)
+        return set()
+
+    def delete(self, feature_to_delete):
+        def descend_and_delete(parent):
+            # Returns False if feature was deleted and parent doesn't need to be deleted
+            # Returns True if feature was deleted and parent does need to be deleted
+            # Returns None if feature was not deleted (not found in tree)
+            if feature_to_delete in parent.children:
+                deleted = parent.delete_child(feature_to_delete)
+                if deleted == parent:
+                    return True
+                else:
+                    self.delete_constraints_containing(deleted | set(feature_to_delete.flat_tree))
+                    return False
+            else:
+                for c in parent.children:
+                    result = descend_and_delete(c)
+                    if result is False:
+                        return False
+                    elif result is True:
+                        deleted = parent.delete_child(c)
+                        if deleted == parent:
+                            return True
+                        else:
+                            self.delete_constraints_containing(deleted | set(c.flat_tree))
+                            return False
+        result = descend_and_delete(self)
+        assert result is False
+
     def delete_constraints_containing(self, features):
-        to_delete = {c for f in features for c in self.contraints if f in c.features}
+        print("deleting", features)
+        to_delete = {c for f in features for c in self.constraints if f in c.features}
         self.constraints = [c for c in self.constraints if c not in to_delete]           

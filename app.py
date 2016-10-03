@@ -26,6 +26,8 @@ class Canvas(QtWidgets.QWidget):
         self.line_color_selected = Qt.green
         self.line_width = 2
 
+        self.setFocusPolicy(Qt.StrongFocus)
+
     def initUI(self):
         pass
 
@@ -58,7 +60,12 @@ class Canvas(QtWidgets.QWidget):
         self.update()
 
     def keyPressEvent(self, event):
-        pass
+        if event.key() == Qt.Key_Delete:
+            to_delete = list(self.scene.flat_tree)
+            for f in to_delete:
+                if f in self.scene.flat_tree and f.selected:
+                    self.scene.delete(f)
+            self.update()
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
