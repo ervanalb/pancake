@@ -142,7 +142,7 @@ class Polygon(Feature):
             else:
                 i = self.ps.index(c)
                 self.ls[i - 1].p2 = self.ls[i].p2
-                ret = {self.ls[i]}
+                ret = {self.ls[i], self.ls[i - 1]}
                 del self.ps[i]
                 del self.ls[i]
                 return ret
@@ -152,10 +152,9 @@ class Polygon(Feature):
                 return self
             else:
                 i = self.ls.index(c)
-                self.ls[i - 1].p2 = self.ls[i + 1].p2
+                self.ls[i - 1].p2 = self.ls[(i + 1) % len(self.ps)].p1
                 ret = {self.ps[i], self.ps[(i + 1) % len(self.ps)]}
                 del self.ps[i]
-                del self.ps[(i + 1) % len(self.ps)]
                 del self.ls[i]
                 return ret
 
@@ -209,6 +208,5 @@ class Scene(Feature):
         assert result is False
 
     def delete_constraints_containing(self, features):
-        print("deleting", features)
         to_delete = {c for f in features for c in self.constraints if f in c.features}
         self.constraints = [c for c in self.constraints if c not in to_delete]           

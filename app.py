@@ -125,9 +125,10 @@ def main():
     ]
 
     c.scene.constraints = [
-        constraints.FixedDistance(c.scene.children[0].ps[0], c.scene.children[0].ps[1], 10),
-        constraints.FixedDistance(c.scene.children[0].ps[1], c.scene.children[0].ps[2], 10),
-        constraints.FixedDistance(c.scene.children[0].ps[2], c.scene.children[0].ps[0], 10)
+        constraints.Vertical(c.scene.children[0].ps[0], c.scene.children[0].ps[1]),
+        constraints.Horizontal(c.scene.children[0].ps[1], c.scene.children[0].ps[2]),
+        constraints.Vertical(c.scene.children[0].ps[2], c.scene.children[0].ps[3]),
+        constraints.Horizontal(c.scene.children[0].ps[3], c.scene.children[0].ps[0])
     ]
 
     sys.exit(app.exec_())
