@@ -27,21 +27,18 @@ class Feature:
 
         return set()
 
+    def __str__(self):
+        return "{}".format(self.__class__.__name__)
+
 class Point(Feature):
-    def __init__(self, x, y, name=None):
+    def __init__(self, x, y):
         super().__init__()
-        self.x = Variable(x, "{}.x".format(name) if name is not None else None)
-        self.y = Variable(y, "{}.y".format(name) if name is not None else None)
-        self.name = name
+        self.x = Variable(x)
+        self.y = Variable(y)
         self.handle_size = 10
 
     def __str__(self):
-        if self.name is not None:
-            return "{} = ({}, {})".format(self.name, self.x.value, self.y.value)
-        return "({}, {})".format(self.x.value, self.y.value)
-
-    def __repr__(self):
-        return "{}({})".format(self.__class__.__name__, str(self))
+        return "{}({:.3f}, {:.3f})".format(self.__class__.__name__, self.x.value, self.y.value)
 
     def draw(self, canvas, event, qp):
         params = (canvas.xfx(self.x.value) - self.handle_size / 2, canvas.xfy(self.y.value) - self.handle_size / 2, self.handle_size, self.handle_size)
@@ -62,12 +59,12 @@ class Point(Feature):
         self.y.value = new_pos[1]
 
 class Line(Feature):
-    def __init__(self, *args, name=None):
+    def __init__(self, *args):
         super().__init__()
         if len(args) == 4:
             (x1, y1, x2, y2) = args
-            self.p1 = Point(x1, y1, "{}.1".format(name) if name is not None else None)
-            self.p2 = Point(x2, y2, "{}.2".format(name) if name is not None else None)
+            self.p1 = Point(x1, y1)
+            self.p2 = Point(x2, y2)
             self._children = [self.p1, self.p2]
         elif len(args) == 2:
             (p1, p2) = args
@@ -76,7 +73,6 @@ class Line(Feature):
             self._children = [] # assume children are already handled
         else:
             assert False
-        self.name = name
         self.handle_size = 10
 
     @property
@@ -118,6 +114,9 @@ class Polygon(Feature):
         assert len(points) >= 2
         self.ps = [Point(*p) for p in points]
         self.ls = [Line(p1, p2) for (p1, p2) in zip(self.ps[0:-1], self.ps[1:])] + [Line(self.ps[-1], self.ps[0])]
+
+    def __str__(self):
+        return "{}({})".format(self.__class__.__name__, len(self.ps))
 
     @property
     def children(self):
