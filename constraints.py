@@ -1,4 +1,5 @@
 import numpy as np
+import features
 
 class Constraint:
     def __init__(self, system=None):
@@ -28,6 +29,24 @@ class Constraint:
     def variables(self, value):
         assert isinstance(value, tuple), ValueError("variables must be tuple")
         self._variables = value
+
+    @classmethod
+    def assert_compatible(cls, args):
+        assert cls.compatible(args), ValueError("{} is not available for the given features")
+
+    @classmethod
+    def compatible(cls, fs):
+        return False
+
+    def __str__(self):
+        return "{}".format(self.__class__.__name__)
+
+def line_or_two_points(fs):
+    return (len(fs) == 1 and
+            isinstance(fs[0], features.Line) or
+            len(fs) == 2 and
+            isinstance(fs[0], features.Point) and
+            isinstance(fs[1], features.Point))
 
 class FixedDistance(Constraint):
     def __init__(self, p1, p2, dist, **kwargs):
@@ -144,11 +163,89 @@ class FixedY(Constraint, Fixed):
         self.features = (self.point,)
 
 class Vertical(Equal, Constraint):
-    def __init__(self, p1, p2, **kwargs):
-        super().__init__(p1.x, p2.x, **kwargs)
-        self.features = (p1, p2)
+    def __init__(self, *args, **kwargs):
+        self.assert_compatible(args)
+        if len(args) == 2:
+            (p1, p2) = args
+            super().__init__(p1.x, p2.x, **kwargs)
+            self.features = (p1, p2)
+        elif len(args) == 1:
+            (l,) = args
+            super().__init__(l.p1.x, l.p2.x, **kwargs)
+            self.features = (l,)
+
+    @classmethod
+    def compatible(cls, fs):
+        return line_or_two_points(fs)
 
 class Horizontal(Equal, Constraint):
-    def __init__(self, p1, p2, **kwargs):
-        super().__init__(p1.y, p2.y, **kwargs)
-        self.features = (p1, p2)
+    def __init__(self, *args, **kwargs):
+        self.assert_compatible(args)
+        if len(args) == 2:
+            (p1, p2) = args
+            super().__init__(p1.y, p2.y, **kwargs)
+            self.features = (p1, p2)
+        elif len(args) == 1:
+            (l,) = args
+            super().__init__(l.p1.y, l.p2.y, **kwargs)
+            self.features = (l,)
+
+    @classmethod
+    def compatible(cls, fs):
+        return line_or_two_points(fs)
+
+class CongruentLines(Constraint):
+    def __init__(self, *args, **kwargs):
+        self.assert_compatible(args)
+        (l1, l2) = args
+        super().__init__(**kwargs)
+        self.l1 = l1
+        self.l2 = l2
+        self.features = (l1, l2)
+        self.variables = (l1.p1.x, l1.p1.y, l1.p2.x, l1.p2.y,
+                          l2.p1.x, l2.p1.y, l2.p2.x, l2.p2.y)
+
+    @classmethod
+    def compatible(cls, fs):
+        return (len(fs) == 2 and
+                isinstance(fs[0], features.Line) and
+                isinstance(fs[1], features.Line))
+
+    def f(self, variables):
+        l1p1x = variables[self.l1.p1.x]
+        l1p1y = variables[self.l1.p1.y]
+        l1p2x = variables[self.l1.p2.x]
+        l1p2y = variables[self.l1.p2.y]
+        l2p1x = variables[self.l2.p1.x]
+        l2p1y = variables[self.l2.p1.y]
+        l2p2x = variables[self.l2.p2.x]
+        l2p2y = variables[self.l2.p2.y]
+        return lambda x: np.array([(x[l1p2x] - x[l1p1x]) ** 2 + (x[l1p2y] - x[l1p1y]) ** 2 - (x[l2p2x] - x[l2p1x]) ** 2 - (x[l2p2y] - x[l2p1y]) ** 2])
+
+    def df(self, variables):
+        l1p1x = variables[self.l1.p1.x]
+        l1p1y = variables[self.l1.p1.y]
+        l1p2x = variables[self.l1.p2.x]
+        l1p2y = variables[self.l1.p2.y]
+        l2p1x = variables[self.l2.p1.x]
+        l2p1y = variables[self.l2.p1.y]
+        l2p2x = variables[self.l2.p2.x]
+        l2p2y = variables[self.l2.p2.y]
+        def _df(x):
+            p = np.zeros((1, len(variables)))
+            p[0, l1p1x] = -2 * (x[l1p2x] - x[l1p1x])
+            p[0, l1p1y] = -2 * (x[l1p2y] - x[l1p1y])
+            p[0, l1p2x] =  2 * (x[l1p2x] - x[l1p1x])
+            p[0, l1p2y] =  2 * (x[l1p2y] - x[l1p1y])
+            p[0, l2p1x] =  2 * (x[l2p2x] - x[l2p1x])
+            p[0, l2p1y] =  2 * (x[l2p2y] - x[l2p1y])
+            p[0, l2p2x] = -2 * (x[l2p2x] - x[l2p1x])
+            p[0, l2p2y] = -2 * (x[l2p2y] - x[l2p1y])
+            return p
+        return _df
+
+available = (
+    Vertical,
+    Horizontal,
+    CongruentLines
+)

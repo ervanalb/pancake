@@ -45,7 +45,10 @@ class Canvas(QtWidgets.QWidget):
         return y / self.scale - self.translate[1]
 
     def recalculate(self):
-        solver.solve(self.scene.constraints)
+        try:
+            solver.solve(self.scene.constraints)
+        except solver.SolverException:
+            print("Failed to converge.")
 
     def paintEvent(self, event):
         self.recalculate()
@@ -78,6 +81,11 @@ class Canvas(QtWidgets.QWidget):
                 for f in features:
                     if f.hit(self, pos):
                         f.selected = True
+                        break
+            elif QtWidgets.QApplication.keyboardModifiers() == Qt.ControlModifier:
+                for f in features:
+                    if f.hit(self, pos):
+                        f.selected = not f.selected
                         break
             else: 
 
@@ -126,19 +134,31 @@ class Canvas(QtWidgets.QWidget):
     def contextMenuEvent(self, event):
         selected = [f for f in self.scene.flat_tree if f.selected]
         if len(selected) >= 1:
+            menu = QtWidgets.QMenu(self)
+
+            # Actions
             available_actions = [(action_name, [action_function] + [dict(feature.actions)[action_name] for feature in selected[1:]])
                                  for (action_name, action_function) in selected[0].actions
                                  if all([action_name in dict(feature.actions) for feature in selected[1:]])]
+            action_menu_items = [(menu.addAction(action_name), action_functions) for (action_name, action_functions) in available_actions]
 
-            feature = selected[0]
-            menu = QtWidgets.QMenu(self)
-            menu_items = [(menu.addAction(action_name), action_functions) for (action_name, action_functions) in available_actions]
-            action = menu.exec_(self.mapToGlobal(event.pos()))
-            for (menu_action, action_functions) in menu_items:
-                if action == menu_action:
+            # Constraints
+            available_constraints = [constraint_class for constraint_class in constraints.available if constraint_class.compatible(selected)]
+            constraint_menu_items = [(menu.addAction(constraint_class.__name__), constraint_class) for constraint_class in available_constraints]
+
+            result = menu.exec_(self.mapToGlobal(event.pos()))
+            for (menu_action, action_functions) in action_menu_items:
+                if result == menu_action:
                     for af in action_functions:
                         af()
                     break
+            else:
+                for (menu_constraint, constraint_class) in constraint_menu_items:
+                    if result == menu_constraint:
+                        self.scene.add_constraint(constraint_class(*selected, system=self.scene))
+                        break
+
+            self.update_fn()
 
 class FeatureTree(QtWidgets.QTreeWidget):
     def __init__(self, scene, update_fn):
@@ -234,10 +254,10 @@ def main():
     ]
 
     scene.constraints = [
-        constraints.Vertical(scene.children[0].ps[0], scene.children[0].ps[1], system=scene),
-        constraints.Horizontal(scene.children[0].ps[1], scene.children[0].ps[2], system=scene),
-        constraints.Vertical(scene.children[0].ps[2], scene.children[0].ps[3], system=scene),
-        constraints.Horizontal(scene.children[0].ps[3], scene.children[0].ps[0], system=scene)
+        #constraints.Vertical(scene.children[0].ps[0], scene.children[0].ps[1], system=scene),
+        #constraints.Horizontal(scene.children[0].ps[1], scene.children[0].ps[2], system=scene),
+        #constraints.Vertical(scene.children[0].ps[2], scene.children[0].ps[3], system=scene),
+        #constraints.Horizontal(scene.children[0].ps[3], scene.children[0].ps[0], system=scene)
     ]
 
     update_fn()

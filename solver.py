@@ -1,7 +1,7 @@
 import numpy as np
 
 EPSILON = 1e-10
-MAX_ITER = 100
+MAX_ITER = 500
 
 class SolverException(Exception):
     pass
