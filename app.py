@@ -72,14 +72,29 @@ class Canvas(QtWidgets.QWidget):
         if event.button() == Qt.LeftButton:
             pos = np.array([event.x(), event.y()]) / self.dpi_scale
             self.drag_features = np.array([self.ixfx(pos[0]), self.ixfy(pos[1])])
-            for f in self.scene.flat_tree:
-                f.selected = False
 
-            for f in self.scene.flat_tree:
-                if f.hit(self, pos):
-                    f.selected = True
+            features = self.scene.flat_tree
+            if QtWidgets.QApplication.keyboardModifiers() == Qt.ShiftModifier:
+                for f in features:
+                    if f.hit(self, pos):
+                        f.selected = True
+                        break
+            else: 
+
+                for f in features:
+                    if f.hit(self, pos):
+                        if not f.selected:
+                            for f2 in features:
+                                f2.selected = False
+                        f.selected = True
+                        break
+                else:
+                    for f2 in features:
+                        f2.selected = False
+
+            for f in features:
+                if f.selected:
                     f.start_drag(self, self.drag_features)
-                    break
 
             self.update_fn()
         elif event.button() == Qt.MiddleButton:
@@ -110,14 +125,19 @@ class Canvas(QtWidgets.QWidget):
 
     def contextMenuEvent(self, event):
         selected = [f for f in self.scene.flat_tree if f.selected]
-        if len(selected) == 1:
+        if len(selected) >= 1:
+            available_actions = [(action_name, [action_function] + [dict(feature.actions)[action_name] for feature in selected[1:]])
+                                 for (action_name, action_function) in selected[0].actions
+                                 if all([action_name in dict(feature.actions) for feature in selected[1:]])]
+
             feature = selected[0]
             menu = QtWidgets.QMenu(self)
-            menu_items = [(menu.addAction(action_name), action_function) for (action_name, action_function) in feature.actions]
+            menu_items = [(menu.addAction(action_name), action_functions) for (action_name, action_functions) in available_actions]
             action = menu.exec_(self.mapToGlobal(event.pos()))
-            for (menu_action, action_function) in menu_items:
+            for (menu_action, action_functions) in menu_items:
                 if action == menu_action:
-                    action_function()
+                    for af in action_functions:
+                        af()
                     break
 
 class FeatureTree(QtWidgets.QTreeWidget):
