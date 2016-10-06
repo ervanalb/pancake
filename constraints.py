@@ -1,12 +1,42 @@
 import numpy as np
 
-class FixedDistance:
-    def __init__(self, p1, p2, dist):
+class Constraint:
+    def __init__(self, system=None):
+        self.system = system
+        self._variables = tuple()
+        self._features = tuple()
+
+    @property
+    def features(self):
+        return self._features
+
+    @features.setter
+    def features(self, value):
+        assert isinstance(value, tuple), ValueError("features must be tuple")
+
+        for f in self._features:
+            f.constraints.remove(self)
+        self._features = value
+        for f in self._features:
+            f.constraints.append(self)
+
+    @property
+    def variables(self):
+        return self._variables
+
+    @variables.setter
+    def variables(self, value):
+        assert isinstance(value, tuple), ValueError("variables must be tuple")
+        self._variables = value
+
+class FixedDistance(Constraint):
+    def __init__(self, p1, p2, dist, **kwargs):
+        super().__init__(**kwargs)
         self.dist = dist
         self.p1 = p1
         self.p2 = p2
-        self.features = {self.p1, self.p2}
-        self.variables = [self.p1.x, self.p1.y, self.p2.x, self.p2.y]
+        self.features = (self.p1, self.p2)
+        self.variables = (self.p1.x, self.p1.y, self.p2.x, self.p2.y)
 
     def f(self, variables):
         p1x = variables[self.p1.x]
@@ -30,12 +60,12 @@ class FixedDistance:
         return _df
 
 class Distance:
-    def __init__(self, p1, p2, dist):
+    def __init__(self, p1, p2, dist, **kwargs):
+        super().__init__(**kwargs)
         self.dist = dist
         self.p1 = p1
         self.p2 = p2
-        self.features = {self.p1, self.p2, self.dist}
-        self.variables = [self.p1.x, self.p1.y, self.p2.x, self.p2.y, self.dist]
+        self.variables = (p1.x, p1.y, p2.x, p2.y, dist)
 
     def f(self, variables):
         p1x = variables[self.p1.x]
@@ -62,11 +92,12 @@ class Distance:
         return _df
 
 class Fixed:
-    def __init__(self, var, val):
+    def __init__(self, var, val, **kwargs):
+        super().__init__(**kwargs)
         self.var = var
         self.val = val
-        self.features = {self.var}
-        self.variables = [self.var]
+        self.features = (self.var,)
+        self.variables = (self.var,)
 
     def f(self, variables):
         v = variables[self.var]
@@ -81,11 +112,11 @@ class Fixed:
         return _df
 
 class Equal:
-    def __init__(self, var1, var2):
+    def __init__(self, var1, var2, **kwargs):
+        super().__init__(**kwargs)
         self.var1 = var1
         self.var2 = var2
-        self.features = {self.var1, self.var2}
-        self.variables = [self.var1, self.var2]
+        self.variables = (var1, var2)
 
     def f(self, variables):
         v1 = variables[self.var1]
@@ -102,22 +133,22 @@ class Equal:
             return p
         return _df
 
-class FixedX(Fixed):
-    def __init__(self, p, x):
-        super().__init__(p.x, x)
-        self.features = {p}
+class FixedX(Constraint, Fixed):
+    def __init__(self, point, val, **kwargs):
+        super().__init__(point.x, val, **kwargs)
+        self.features = (self.point,)
 
-class FixedY(Fixed):
-    def __init__(self, p, y):
-        super().__init__(p.y, y)
-        self.features = {p}
+class FixedY(Constraint, Fixed):
+    def __init__(self, point, val, **kwargs):
+        super().__init__(point.y, val, **kwargs)
+        self.features = (self.point,)
 
-class Vertical(Equal):
-    def __init__(self, p1, p2):
-        super().__init__(p1.x, p2.x)
-        self.features = {p1, p2}
+class Vertical(Equal, Constraint):
+    def __init__(self, p1, p2, **kwargs):
+        super().__init__(p1.x, p2.x, **kwargs)
+        self.features = (p1, p2)
 
-class Horizontal(Equal):
-    def __init__(self, p1, p2):
-        super().__init__(p1.y, p2.y)
-        self.features = {p1, p2}
+class Horizontal(Equal, Constraint):
+    def __init__(self, p1, p2, **kwargs):
+        super().__init__(p1.y, p2.y, **kwargs)
+        self.features = (p1, p2)

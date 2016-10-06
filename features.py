@@ -5,8 +5,10 @@ from PyQt5.QtCore import Qt
 import numpy as np
 
 class Feature:
-    def __init__(self):
+    def __init__(self, parent=None):
         self.selected = False
+        self.parent = parent
+        self.constraints = []
 
     @property
     def flat_tree(self):
@@ -19,20 +21,33 @@ class Feature:
     def hit(self, canvas, pos):
         return any([c.hit(canvas, pos) for c in self.children])
 
-    def delete_child(self, c):
-        """ This method should delete child c from this feature's children. It should
-        return as a set any additional children that were deleted. If deletion of the given
-        child should cause this feature to be deleted entirely, self is returned.
-        """
+    def draw(self, canvas, event, qp):
+        pass
 
-        return set()
+    def delete_constraints(self):
+        for c in self.constraints[:]:
+            c.system.delete_constraint(c)
+        for c in self.children:
+            c.delete_constraints()
 
     def __str__(self):
         return "{}".format(self.__class__.__name__)
 
+    @property
+    def actions(self):
+        return []
+
+class Scalar(Feature):
+    def __init__(self, val, **kwargs):
+        super().__init__(**kwargs)
+        self.var = Variable(val)
+
+    def __str__(self):
+        return "{}({:.3f})".format(self.__class__.__name__, self.x.value)
+
 class Point(Feature):
-    def __init__(self, x, y):
-        super().__init__()
+    def __init__(self, x, y, **kwargs):
+        super().__init__(**kwargs)
         self.x = Variable(x)
         self.y = Variable(y)
         self.handle_size = 10
@@ -59,20 +74,18 @@ class Point(Feature):
         self.y.value = new_pos[1]
 
 class Line(Feature):
-    def __init__(self, *args):
-        super().__init__()
-        if len(args) == 4:
+    def __init__(self, *args, **kwargs):
+        super().__init__(**kwargs)
+        if len(args) == 2:
+            self.p1, self.p2 = args
+            self._children = []
+        elif len(args) == 4:
             (x1, y1, x2, y2) = args
-            self.p1 = Point(x1, y1)
-            self.p2 = Point(x2, y2)
+            self.p1 = Point(x1, y1, parent=self)
+            self.p2 = Point(x2, y2, parent=self)
             self._children = [self.p1, self.p2]
-        elif len(args) == 2:
-            (p1, p2) = args
-            self.p1 = p1
-            self.p2 = p2
-            self._children = [] # assume children are already handled
         else:
-            assert False
+            raise TypeError("Line takes 2 or 4 arguments")
         self.handle_size = 10
 
     @property
@@ -105,15 +118,23 @@ class Line(Feature):
         self.p1.drag(canvas, pos)
         self.p2.drag(canvas, pos)
 
-    def delete_child(self, c):
-        return self
+    def delete_child(self, child):
+        self.parent.delete_child(self)
+
+class Edge(Line):
+    def __init__(self, p1, p2, **kwargs):
+        super().__init__(p1, p2, **kwargs)
+
+    @property
+    def actions(self):
+        return (("split", lambda:self.parent.split_edge(self)),)
 
 class Polygon(Feature):
-    def __init__(self, points, name=None):
-        super().__init__()
+    def __init__(self, points, **kwargs):
+        super().__init__(**kwargs)
         assert len(points) >= 2
-        self.ps = [Point(*p) for p in points]
-        self.ls = [Line(p1, p2) for (p1, p2) in zip(self.ps[0:-1], self.ps[1:])] + [Line(self.ps[-1], self.ps[0])]
+        self.ps = [Point(p[0], p[1], parent=self) for p in points]
+        self.ls = [Edge(p1, p2, parent=self) for (p1, p2) in zip(self.ps[0:-1], self.ps[1:])] + [Edge(self.ps[-1], self.ps[0], parent=self)]
 
     def __str__(self):
         return "{}({})".format(self.__class__.__name__, len(self.ps))
@@ -134,28 +155,43 @@ class Polygon(Feature):
         for c in self.ls + self.ps:
             c.draw(canvas, event, qp)
 
+    def split_edge(self, edge):
+        i = self.ls.index(edge)
+        x = (edge.p1.x.value + edge.p2.x.value) / 2
+        y = (edge.p1.y.value + edge.p2.y.value) / 2
+        newp = Point(x, y, parent=self)
+        l1 = Edge(self.ls[i - 1].p2, newp, parent=self)
+        l2 = Edge(newp, self.ls[(i + 1) % len(self.ls)].p1, parent=self)
+        self.ls[i].delete_constraints()
+        del self.ls[i]
+        self.ls.insert(i, l1)
+        self.ls.insert(i + 1, l2)
+        self.ps.insert(i + 1, newp)
+
     def delete_child(self, c):
         if c in self.ps:
             if len(self.ps) == 2:
-                return self
+                self.parent.delete_child(self)
             else:
                 i = self.ps.index(c)
                 self.ls[i - 1].p2 = self.ls[i].p2
-                ret = {self.ls[i], self.ls[i - 1]}
+                self.ps[i].delete_constraints()
+                self.ls[i].delete_constraints()
+                self.ls[i - 1].delete_constraints()
                 del self.ps[i]
                 del self.ls[i]
-                return ret
 
         elif c in self.ls:
             if len(self.ls) == 2:
-                return self
+                self.parent.delete_child(self)
             else:
                 i = self.ls.index(c)
                 self.ls[i - 1].p2 = self.ls[(i + 1) % len(self.ps)].p1
-                ret = {self.ps[i], self.ps[(i + 1) % len(self.ps)]}
+                self.ps[i].delete_constraints()
+                self.ps[(i + 1) % len(self.ps)].delete_constraints()
+                self.ls[i].delete_constraints()
                 del self.ps[i]
                 del self.ls[i]
-                return ret
 
 class Scene(Feature):
     def __init__(self):
@@ -175,37 +211,14 @@ class Scene(Feature):
         for c in reversed(self.children):
             c.draw(canvas, event, qp)
 
-    def delete_child(self, feature):
-        self._children.remove(feature)
-        return set()
+    def add_constraint(self, constraint):
+        self.constraints.append(constraint)
 
-    def delete(self, feature_to_delete):
-        def descend_and_delete(parent):
-            # Returns False if feature was deleted and parent doesn't need to be deleted
-            # Returns True if feature was deleted and parent does need to be deleted
-            # Returns None if feature was not deleted (not found in tree)
-            if feature_to_delete in parent.children:
-                deleted = parent.delete_child(feature_to_delete)
-                if deleted == parent:
-                    return True
-                else:
-                    self.delete_constraints_containing(deleted | set(feature_to_delete.flat_tree))
-                    return False
-            else:
-                for c in parent.children:
-                    result = descend_and_delete(c)
-                    if result is False:
-                        return False
-                    elif result is True:
-                        deleted = parent.delete_child(c)
-                        if deleted == parent:
-                            return True
-                        else:
-                            self.delete_constraints_containing(deleted | set(c.flat_tree))
-                            return False
-        result = descend_and_delete(self)
-        assert result is False
+    def delete_constraint(self, constraint):
+        for f in constraint.features:
+            f.constraints.remove(constraint)
+        self.constraints.remove(constraint)
 
-    def delete_constraints_containing(self, features):
-        to_delete = {c for f in features for c in self.constraints if f in c.features}
-        self.constraints = [c for c in self.constraints if c not in to_delete]           
+    def delete_child(self, child):
+        child.delete_constraints()
+        self._children.remove(child)

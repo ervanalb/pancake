@@ -65,7 +65,7 @@ class Canvas(QtWidgets.QWidget):
             to_delete = list(self.scene.flat_tree)
             for f in to_delete:
                 if f in self.scene.flat_tree and f.selected:
-                    self.scene.delete(f)
+                    f.parent.delete_child(f)
             self.update_fn()
 
     def mousePressEvent(self, event):
@@ -82,13 +82,13 @@ class Canvas(QtWidgets.QWidget):
                     break
 
             self.update_fn()
-        elif event.button() == Qt.RightButton:
+        elif event.button() == Qt.MiddleButton:
             self.drag_view = np.array([event.x(), event.y()])
 
     def mouseReleaseEvent(self, event):
         if event.button() == Qt.LeftButton:
             self.drag_features = None
-        elif event.button() == Qt.RightButton:
+        elif event.button() == Qt.MiddleButton:
             self.drag_view = None
 
     def mouseMoveEvent(self, event):
@@ -107,6 +107,18 @@ class Canvas(QtWidgets.QWidget):
             self.translate += d / self.scale
             self.drag_view = pos
             self.update_fn()
+
+    def contextMenuEvent(self, event):
+        selected = [f for f in self.scene.flat_tree if f.selected]
+        if len(selected) == 1:
+            feature = selected[0]
+            menu = QtWidgets.QMenu(self)
+            menu_items = [(menu.addAction(action_name), action_function) for (action_name, action_function) in feature.actions]
+            action = menu.exec_(self.mapToGlobal(event.pos()))
+            for (menu_action, action_function) in menu_items:
+                if action == menu_action:
+                    action_function()
+                    break
 
 class FeatureTree(QtWidgets.QTreeWidget):
     def __init__(self, scene, update_fn):
@@ -198,14 +210,14 @@ def main():
     w.show()
 
     scene.children = [
-        features.Polygon([(0, 0), (10, 0), (10, 10), (0, 10)])
+        features.Polygon([(0, 0), (10, 0), (10, 10), (0, 10)], parent=scene)
     ]
 
     scene.constraints = [
-        constraints.Vertical(scene.children[0].ps[0], scene.children[0].ps[1]),
-        constraints.Horizontal(scene.children[0].ps[1], scene.children[0].ps[2]),
-        constraints.Vertical(scene.children[0].ps[2], scene.children[0].ps[3]),
-        constraints.Horizontal(scene.children[0].ps[3], scene.children[0].ps[0])
+        constraints.Vertical(scene.children[0].ps[0], scene.children[0].ps[1], system=scene),
+        constraints.Horizontal(scene.children[0].ps[1], scene.children[0].ps[2], system=scene),
+        constraints.Vertical(scene.children[0].ps[2], scene.children[0].ps[3], system=scene),
+        constraints.Horizontal(scene.children[0].ps[3], scene.children[0].ps[0], system=scene)
     ]
 
     update_fn()
