@@ -48,6 +48,11 @@ def line_or_two_points(fs):
             isinstance(fs[0], features.Point) and
             isinstance(fs[1], features.Point))
 
+def two_lines(fs):
+    return (len(fs) == 2 and
+            isinstance(fs[0], features.Line) and
+            isinstance(fs[1], features.Line))
+
 class FixedDistance(Constraint):
     def __init__(self, p1, p2, dist, **kwargs):
         super().__init__(**kwargs)
@@ -115,7 +120,6 @@ class Fixed:
         super().__init__(**kwargs)
         self.var = var
         self.val = val
-        self.features = (self.var,)
         self.variables = (self.var,)
 
     def f(self, variables):
@@ -152,15 +156,15 @@ class Equal:
             return p
         return _df
 
-class FixedX(Constraint, Fixed):
+class FixedX(Fixed, Constraint):
     def __init__(self, point, val, **kwargs):
         super().__init__(point.x, val, **kwargs)
-        self.features = (self.point,)
+        self.features = (point,)
 
-class FixedY(Constraint, Fixed):
+class FixedY(Fixed, Constraint):
     def __init__(self, point, val, **kwargs):
         super().__init__(point.y, val, **kwargs)
-        self.features = (self.point,)
+        self.features = (point,)
 
 class Vertical(Equal, Constraint):
     def __init__(self, *args, **kwargs):
@@ -207,9 +211,7 @@ class CongruentLines(Constraint):
 
     @classmethod
     def compatible(cls, fs):
-        return (len(fs) == 2 and
-                isinstance(fs[0], features.Line) and
-                isinstance(fs[1], features.Line))
+        return two_lines(fs)
 
     def f(self, variables):
         l1p1x = variables[self.l1.p1.x]
@@ -244,8 +246,108 @@ class CongruentLines(Constraint):
             return p
         return _df
 
+class Parallel(Constraint):
+    def __init__(self, *args, **kwargs):
+        self.assert_compatible(args)
+        (l1, l2) = args
+        super().__init__(**kwargs)
+        self.l1 = l1
+        self.l2 = l2
+        self.features = (l1, l2)
+        self.variables = (l1.p1.x, l1.p1.y, l1.p2.x, l1.p2.y,
+                          l2.p1.x, l2.p1.y, l2.p2.x, l2.p2.y)
+
+    @classmethod
+    def compatible(cls, fs):
+        return two_lines(fs)
+
+    def f(self, variables):
+        l1p1x = variables[self.l1.p1.x]
+        l1p1y = variables[self.l1.p1.y]
+        l1p2x = variables[self.l1.p2.x]
+        l1p2y = variables[self.l1.p2.y]
+        l2p1x = variables[self.l2.p1.x]
+        l2p1y = variables[self.l2.p1.y]
+        l2p2x = variables[self.l2.p2.x]
+        l2p2y = variables[self.l2.p2.y]
+        return lambda x: np.array([(x[l1p2x] - x[l1p1x]) * (x[l2p2y] - x[l2p1y]) - (x[l1p2y] - x[l1p1y]) * (x[l2p2x] - x[l2p1x])])
+
+    def df(self, variables):
+        l1p1x = variables[self.l1.p1.x]
+        l1p1y = variables[self.l1.p1.y]
+        l1p2x = variables[self.l1.p2.x]
+        l1p2y = variables[self.l1.p2.y]
+        l2p1x = variables[self.l2.p1.x]
+        l2p1y = variables[self.l2.p1.y]
+        l2p2x = variables[self.l2.p2.x]
+        l2p2y = variables[self.l2.p2.y]
+        def _df(x):
+            p = np.zeros((1, len(variables)))
+            p[0, l1p1x] = -(x[l2p2y] - x[l2p1y])
+            p[0, l1p1y] = -(x[l2p2x] - x[l2p1x])
+            p[0, l1p2x] =  (x[l2p2y] - x[l2p1y])
+            p[0, l1p2y] =  (x[l2p2x] - x[l2p1x])
+            p[0, l2p1x] =  (x[l1p2y] - x[l1p1y])
+            p[0, l2p1y] =  (x[l1p2x] - x[l1p1x])
+            p[0, l2p2x] = -(x[l1p2y] - x[l1p1y])
+            p[0, l2p2y] = -(x[l1p2x] - x[l1p1x])
+            return p
+        return _df
+
+class Perpendicular(Constraint):
+    def __init__(self, *args, **kwargs):
+        self.assert_compatible(args)
+        (l1, l2) = args
+        super().__init__(**kwargs)
+        self.l1 = l1
+        self.l2 = l2
+        self.features = (l1, l2)
+        self.variables = (l1.p1.x, l1.p1.y, l1.p2.x, l1.p2.y,
+                          l2.p1.x, l2.p1.y, l2.p2.x, l2.p2.y)
+
+    @classmethod
+    def compatible(cls, fs):
+        return two_lines(fs)
+
+    def f(self, variables):
+        l1p1x = variables[self.l1.p1.x]
+        l1p1y = variables[self.l1.p1.y]
+        l1p2x = variables[self.l1.p2.x]
+        l1p2y = variables[self.l1.p2.y]
+        l2p1x = variables[self.l2.p1.x]
+        l2p1y = variables[self.l2.p1.y]
+        l2p2x = variables[self.l2.p2.x]
+        l2p2y = variables[self.l2.p2.y]
+        return lambda x: np.array([(x[l1p2x] - x[l1p1x]) * (x[l2p2x] - x[l2p1x]) + (x[l1p2y] - x[l1p1y]) * (x[l2p2y] - x[l2p1y])])
+
+    def df(self, variables):
+        l1p1x = variables[self.l1.p1.x]
+        l1p1y = variables[self.l1.p1.y]
+        l1p2x = variables[self.l1.p2.x]
+        l1p2y = variables[self.l1.p2.y]
+        l2p1x = variables[self.l2.p1.x]
+        l2p1y = variables[self.l2.p1.y]
+        l2p2x = variables[self.l2.p2.x]
+        l2p2y = variables[self.l2.p2.y]
+        def _df(x):
+            p = np.zeros((1, len(variables)))
+            p[0, l1p1x] = -(x[l2p2x] - x[l2p1x])
+            p[0, l1p1y] = -(x[l2p2y] - x[l2p1y])
+            p[0, l1p2x] =  (x[l2p2x] - x[l2p1x])
+            p[0, l1p2y] =  (x[l2p2y] - x[l2p1y])
+            p[0, l2p1x] = -(x[l1p2x] - x[l1p1x])
+            p[0, l2p1y] = -(x[l1p2y] - x[l1p1y])
+            p[0, l2p2x] =  (x[l1p2x] - x[l1p1x])
+            p[0, l2p2y] =  (x[l1p2y] - x[l1p1y])
+            return p
+        return _df
+
+
+
 available = (
     Vertical,
     Horizontal,
-    CongruentLines
+    CongruentLines,
+    Parallel,
+    Perpendicular
 )

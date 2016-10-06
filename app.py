@@ -47,8 +47,9 @@ class Canvas(QtWidgets.QWidget):
     def recalculate(self):
         try:
             solver.solve(self.scene.constraints)
+            self.line_color = Qt.blue
         except solver.SolverException:
-            print("Failed to converge.")
+            self.line_color = Qt.red
 
     def paintEvent(self, event):
         self.recalculate()
@@ -254,6 +255,9 @@ def main():
     ]
 
     scene.constraints = [
+        constraints.FixedDistance(scene.children[0].ps[0], scene.children[0].ps[1], 10, system=scene),
+        constraints.FixedX(scene.children[0].ps[0], 0, system=scene),
+        constraints.FixedY(scene.children[0].ps[0], 0, system=scene),
         #constraints.Vertical(scene.children[0].ps[0], scene.children[0].ps[1], system=scene),
         #constraints.Horizontal(scene.children[0].ps[1], scene.children[0].ps[2], system=scene),
         #constraints.Vertical(scene.children[0].ps[2], scene.children[0].ps[3], system=scene),

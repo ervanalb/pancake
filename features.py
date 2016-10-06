@@ -21,7 +21,7 @@ class Feature:
     def hit(self, canvas, pos):
         return any([c.hit(canvas, pos) for c in self.children])
 
-    def draw(self, canvas, event, qp):
+    def draw(self, canvas, event, qp, **kwargs):
         pass
 
     def delete_constraints(self):
@@ -55,9 +55,10 @@ class Point(Feature):
     def __str__(self):
         return "{}({:.3f}, {:.3f})".format(self.__class__.__name__, self.x.value, self.y.value)
 
-    def draw(self, canvas, event, qp):
+    def draw(self, canvas, event, qp, **kwargs):
+        selected = kwargs.get("selected", self.selected)
         params = (canvas.xfx(self.x.value) - self.handle_size / 2, canvas.xfy(self.y.value) - self.handle_size / 2, self.handle_size, self.handle_size)
-        qp.setPen(QtGui.QPen(canvas.line_color_selected if self.selected else canvas.line_color, canvas.line_width))
+        qp.setPen(QtGui.QPen(canvas.line_color_selected if selected else canvas.line_color, canvas.line_width))
         qp.fillRect(*params, canvas.bg_color)
         qp.drawRect(*params)
 
@@ -92,11 +93,13 @@ class Line(Feature):
     def children(self):
         return self._children
 
-    def draw(self, canvas, event, qp):
-        qp.setPen(QtGui.QPen(canvas.line_color_selected if self.selected else canvas.line_color, canvas.line_width))
+    def draw(self, canvas, event, qp, **kwargs):
+        selected = kwargs.get("selected", self.selected)
+
+        qp.setPen(QtGui.QPen(canvas.line_color_selected if selected else canvas.line_color, canvas.line_width))
         qp.drawLine(canvas.xfx(self.p1.x.value), canvas.xfy(self.p1.y.value), canvas.xfx(self.p2.x.value), canvas.xfy(self.p2.y.value))
         for c in self._children:
-            c.draw(canvas, event, qp)
+            c.draw(canvas, event, qp, **kwargs)
 
     def hit(self, canvas, pos):
         p1 = np.array([canvas.xfx(self.p1.x.value), canvas.xfy(self.p1.y.value)])
@@ -151,9 +154,12 @@ class Polygon(Feature):
         for p in self.ps:
             p.drag(canvas, pos)
 
-    def draw(self, canvas, event, qp):
+    def draw(self, canvas, event, qp, **kwargs):
+        if "selected" not in kwargs and self.selected:
+            kwargs["selected"] = True
+
         for c in self.ls + self.ps:
-            c.draw(canvas, event, qp)
+            c.draw(canvas, event, qp, **kwargs)
 
     def split_edge(self, edge):
         i = self.ls.index(edge)
@@ -207,9 +213,9 @@ class Scene(Feature):
     def children(self, value):
         self._children = value
 
-    def draw(self, canvas, event, qp):
+    def draw(self, canvas, event, qp, **kwargs):
         for c in reversed(self.children):
-            c.draw(canvas, event, qp)
+            c.draw(canvas, event, qp, **kwargs)
 
     def add_constraint(self, constraint):
         self.constraints.append(constraint)
