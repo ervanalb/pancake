@@ -197,51 +197,40 @@ class Canvas(QtWidgets.QWidget):
 
             self.update_fn()
 
-class FeatureTree(QtWidgets.QTreeWidget):
+class FeatureList(QtWidgets.QListWidget):
     def __init__(self, scene, update_fn):
         self.scene = scene
         self.update_fn = update_fn
         super().__init__()
-        self.initUI()
-        self.itemExpanded.connect(self.onItemExpanded)
-        self.itemCollapsed.connect(self.onItemCollapsed)
+        self.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
         self.itemSelectionChanged.connect(self.onItemSelectionChanged)
         self.updating = False
-
-    def onItemExpanded(self, qtwi):
-        qtwi.feature.q_expanded = True
-
-    def onItemCollapsed(self, qtwi):
-        qtwi.feature.q_expanded = False
 
     def onItemSelectionChanged(self):
         if self.updating:
             return
-        def crawl(item):
+
+        for i in range(self.count()):
+            item = self.item(i)
             item.feature.selected = item.isSelected()
-            for i in range(item.childCount()):
-                crawl(item.child(i))
 
-        for i in range(self.topLevelItemCount()):
-            crawl(self.topLevelItem(i))
         self.update_fn()
-
-    def initUI(self):
-        self.header().close()
-        #self.setStyleSheet("QTreeWidget {border: none; background: transparent;}")
 
     def update(self):
         self.updating = True
         to_select = []
 
         def widget(f):
-            item = QtWidgets.QTreeWidgetItem([str(f)])
+            item = QtWidgets.QListWidgetItem(str(f))
+            item.feature = f
             if f.selected:
                 to_select.append(item)
             return item
 
         self.clear()
-        self.addTopLevelItems([widget(f) for f in self.scene.features])
+        for f in self.scene.features:
+            self.addItem(widget(f))
+
         for item in to_select:
             item.setSelected(True)
         super().update()
@@ -253,6 +242,62 @@ class FeatureTree(QtWidgets.QTreeWidget):
                 if f.selected:
                     f.delete()
             self.update_fn()
+
+class ConstraintList(QtWidgets.QListWidget):
+    def __init__(self, scene, update_fn):
+        self.scene = scene
+        self.update_fn = update_fn
+        super().__init__()
+        self.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
+        self.itemSelectionChanged.connect(self.onItemSelectionChanged)
+        self.updating = False
+
+    def onItemSelectionChanged(self):
+        if self.updating:
+            return
+
+        for f in self.scene.features:
+            f.selected = False
+
+        for i in range(self.count()):
+            item = self.item(i)
+            item.constraint.q_selected = item.isSelected()
+            if item.isSelected():
+                for f in item.constraint.features:
+                    f.selected = True
+
+        self.update_fn()
+
+    def update(self):
+        self.updating = True
+
+        to_select = []
+
+        def widget(c):
+            item = QtWidgets.QListWidgetItem(str(c))
+            item.constraint = c
+            if not hasattr(c, "q_selected"):
+                c.q_selected = False
+            if c.q_selected:
+                to_select.append(item)
+            return item
+
+        self.clear()
+        for c in self.scene.constraints:
+            self.addItem(widget(c))
+
+        for item in to_select:
+            item.setSelected(True)
+        super().update()
+        self.updating = False
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key_Delete:
+           for i in range(self.count()):
+                item = self.item(i)
+                if item.isSelected():
+                    item.constraint.delete()
+           self.update_fn()
 
 def add_menus(mb):
     create_menu = mb.addMenu("&Create")
@@ -274,16 +319,19 @@ def main():
 
     def update_fn():
         canvas.update()
-        feature_tree.update()
+        feature_list.update()
+        constraint_list.update()
 
     scene = Scene()
     canvas = Canvas(scene, update_fn)
-    feature_tree = FeatureTree(scene, update_fn)
+    feature_list = FeatureList(scene, update_fn)
+    constraint_list = ConstraintList(scene, update_fn)
 
     splitter = QtWidgets.QSplitter()
 
-    splitter.addWidget(feature_tree)
+    splitter.addWidget(feature_list)
     splitter.addWidget(canvas)
+    splitter.addWidget(constraint_list)
 
     w.setCentralWidget(splitter)
 
