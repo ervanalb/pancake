@@ -170,6 +170,9 @@ class Canvas(QtWidgets.QWidget):
         if len(selected) >= 1:
             menu = QtWidgets.QMenu(self)
 
+            pos = np.array([event.x(), event.y()]) / self.dpi_scale
+            scene_pos = np.array([self.ixfx(pos[0]), self.ixfy(pos[1])])
+
             # Actions
             available_actions = [(action_name, [action_function] + [dict(feature.actions)[action_name] for feature in selected[1:]])
                                  for (action_name, action_function) in selected[0].actions
@@ -184,7 +187,7 @@ class Canvas(QtWidgets.QWidget):
             for (menu_action, action_functions) in action_menu_items:
                 if result == menu_action:
                     for af in action_functions:
-                        af()
+                        af(self, scene_pos)
                     break
             else:
                 for (menu_constraint, constraint_class) in constraint_menu_items:

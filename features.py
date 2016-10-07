@@ -117,3 +117,19 @@ class Line(Feature):
     def drag(self, canvas, pos):
         self.p1.drag(canvas, pos)
         self.p2.drag(canvas, pos)
+
+    def split(self, canvas, pos):
+        p1 = self.p1
+        p3 = self.p2
+        #p2 = Point((p1.x.value + p3.x.value) / 2, (p1.y.value + p3.y.value) / 2)
+        p2 = Point(pos[0], pos[1])
+        self.delete()
+        l1 = Line(p1, p2)
+        l2 = Line(p2, p3)
+        canvas.scene.add_feature(p2)
+        canvas.scene.add_feature(l1)
+        canvas.scene.add_feature(l2)
+
+    @property
+    def actions(self):
+        return (("split", self.split),)
