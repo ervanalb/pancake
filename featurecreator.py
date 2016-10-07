@@ -32,11 +32,6 @@ class FeatureCreator:
         canvas.create = None
         canvas.update()
 
-    def add(self, canvas, features):
-        for f in features:
-            canvas.scene.add_feature(f)
-        canvas.update()
-
     def draw(self, canvas, event, qp):
         pass
 
@@ -45,8 +40,9 @@ class PointCreator(FeatureCreator):
         self.point = features.Point(0, 0)
 
     def mousePressEvent(self, canvas, pos):
-        self.add(canvas, (self.point,))
+        canvas.scene.add_feature(self.point)
         self.point = features.Point(0, 0)
+        canvas.update()
 
     def mouseMoveEvent(self, canvas, pos):
         (self.point.x.value, self.point.y.value) = tuple(pos)
@@ -62,15 +58,29 @@ class LineCreator(FeatureCreator):
 
     def mousePressEvent(self, canvas, pos):
         if self.pt1 is None:
-            self.pt1 = features.Point(*tuple(pos))
+            f = canvas.hit(pos)
+            if f is not None and isinstance(f, features.Point):
+                self.pt1 = f
+                self.pt1_new = False
+            else:
+                self.pt1 = features.Point(*tuple(pos))
+                self.pt1_new = True
             self.mouse = pos
             canvas.update()
         else:
-            pt2 = features.Point(*tuple(pos))
+            f = canvas.hit(pos)
+            if f is not None and isinstance(f, features.Point):
+                pt2 = f
+            else:
+                pt2 = features.Point(*tuple(pos))
+                canvas.scene.add_feature(pt2)
             line = features.Line(self.pt1, pt2)
             line.depends_on((self.pt1, pt2))
-            self.add(canvas, (self.pt1, pt2, line))
+            if self.pt1_new:
+                canvas.scene.add_feature(self.pt1)
+            canvas.scene.add_feature(line)
             self.pt1 = None
+            canvas.update()
 
     def mouseMoveEvent(self, canvas, pos):
         if self.mouse is not None:

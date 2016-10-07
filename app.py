@@ -8,6 +8,24 @@ import constraints
 import solver
 import numpy as np
 
+class Scene:
+    def __init__(self):
+        super().__init__()
+        self.constraints = []
+        self.features = []
+
+    def draw(self, canvas, event, qp, **kwargs):
+        for f in reversed(self.features):
+            f.draw(canvas, event, qp, **kwargs)
+
+    def add_constraint(self, constraint):
+        constraint.system = self
+        self.constraints.append(constraint)
+
+    def add_feature(self, feature):
+        feature.scene = self
+        self.features.append(feature)
+
 class Canvas(QtWidgets.QWidget):
     STANDARD_DPI = 96
     SCROLL_FACTOR = 1.001
@@ -55,6 +73,11 @@ class Canvas(QtWidgets.QWidget):
         except solver.SolverException:
             self.line_color = Qt.red
 
+    def hit(self, pos):
+        for f in self.scene.features:
+            if f.hit(self, pos):
+                return f
+
     def paintEvent(self, event):
         self.recalculate()
         qp = QtGui.QPainter()
@@ -90,28 +113,18 @@ class Canvas(QtWidgets.QWidget):
                 self.drag_features = scene_pos
 
                 if QtWidgets.QApplication.keyboardModifiers() == Qt.ShiftModifier:
-                    for f in self.scene.features:
-                        if f.hit(self, pos):
-                            f.selected = True
-                            break
+                    f = self.hit(pos)
+                    if f is not None:
+                        f.selected = True
                 elif QtWidgets.QApplication.keyboardModifiers() == Qt.ControlModifier:
-                    for f in features:
-                        if f.hit(self, pos):
-                            f.selected = not f.selected
-                            break
+                    f = self.hit(pos)
+                    if f is not None:
+                        f.selected = not f.selected
                 else: 
-
-                    for f in self.scene.features:
-                        if f.hit(self, pos):
-                            if not f.selected:
-                                for f2 in self.scene.features:
-                                    f2.selected = False
-                            f.selected = True
-                            break
-                    else:
+                    f = self.hit(pos)
+                    if f is None or not f.selected:
                         for f2 in self.scene.features:
-                            f2.selected = False
-
+                            f2.selected = (f2 == f)
                 for f in self.scene.features:
                     if f.selected:
                         f.start_drag(self, scene_pos)
@@ -260,7 +273,7 @@ def main():
         canvas.update()
         feature_tree.update()
 
-    scene = features.Scene()
+    scene = Scene()
     canvas = Canvas(scene, update_fn)
     feature_tree = FeatureTree(scene, update_fn)
 
@@ -274,16 +287,6 @@ def main():
     add_menus(w.menuBar())
 
     w.show()
-
-    #scene.constraints = [
-    #    constraints.FixedDistance(scene.children[0].ps[0], scene.children[0].ps[1], 10, system=scene),
-    #    constraints.FixedX(scene.children[0].ps[0], 0, system=scene),
-    #    constraints.FixedY(scene.children[0].ps[0], 0, system=scene),
-    #    #constraints.Vertical(scene.children[0].ps[0], scene.children[0].ps[1], system=scene),
-    #    #constraints.Horizontal(scene.children[0].ps[1], scene.children[0].ps[2], system=scene),
-    #    #constraints.Vertical(scene.children[0].ps[2], scene.children[0].ps[3], system=scene),
-    #    #constraints.Horizontal(scene.children[0].ps[3], scene.children[0].ps[0], system=scene)
-    #]
 
     update_fn()
 

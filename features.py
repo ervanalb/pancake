@@ -117,21 +117,3 @@ class Line(Feature):
     def drag(self, canvas, pos):
         self.p1.drag(canvas, pos)
         self.p2.drag(canvas, pos)
-
-class Scene:
-    def __init__(self):
-        super().__init__()
-        self.constraints = []
-        self.features = []
-
-    def draw(self, canvas, event, qp, **kwargs):
-        for f in reversed(self.features):
-            f.draw(canvas, event, qp, **kwargs)
-
-    def add_constraint(self, constraint):
-        constraint.system = self
-        self.constraints.append(constraint)
-
-    def add_feature(self, feature):
-        feature.scene = self
-        self.features.append(feature)
