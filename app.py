@@ -3,6 +3,7 @@ from PyQt5 import QtWidgets
 from PyQt5 import QtGui
 from PyQt5.QtCore import Qt
 import features
+import featurecreator
 import constraints
 import solver
 import numpy as np
@@ -22,12 +23,15 @@ class Canvas(QtWidgets.QWidget):
         self.drag_view = None
         self.drag_features = None
 
+        self.mode = "select"
+
         self.bg_color = Qt.white
         self.line_color = Qt.blue
         self.line_color_selected = Qt.green
         self.line_width = 2
 
         self.setFocusPolicy(Qt.StrongFocus)
+        self.setMouseTracking(True)
 
     def initUI(self):
         pass
@@ -57,6 +61,8 @@ class Canvas(QtWidgets.QWidget):
         qp.begin(self)
         qp.scale(self.dpi_scale, self.dpi_scale)
         self.scene.draw(self, event, qp)
+        if self.mode == "create":
+            self.create.draw(self, event, qp)
         qp.end()
 
     def wheelEvent(self, event):
@@ -65,69 +71,85 @@ class Canvas(QtWidgets.QWidget):
         self.update_fn()
 
     def keyPressEvent(self, event):
-        if event.key() == Qt.Key_Delete:
-            to_delete = list(self.scene.flat_tree)
-            for f in to_delete:
-                if f in self.scene.flat_tree and f.selected:
-                    f.parent.delete_child(f)
-            self.update_fn()
+        if self.mode == "create":
+            self.create.keyPressEvent(self, event.key())
+
+        elif self.mode == "select":
+            if event.key() == Qt.Key_Delete:
+                to_delete = list(self.scene.flat_tree)
+                for f in to_delete:
+                    if f in self.scene.flat_tree and f.selected:
+                        f.parent.delete_child(f)
+                self.update_fn()
 
     def mousePressEvent(self, event):
+        pos = np.array([event.x(), event.y()]) / self.dpi_scale
+        scene_pos = np.array([self.ixfx(pos[0]), self.ixfy(pos[1])])
+
         if event.button() == Qt.LeftButton:
-            pos = np.array([event.x(), event.y()]) / self.dpi_scale
-            self.drag_features = np.array([self.ixfx(pos[0]), self.ixfy(pos[1])])
+            if self.mode == "select":
+                self.drag_features = scene_pos
 
-            features = self.scene.flat_tree
-            if QtWidgets.QApplication.keyboardModifiers() == Qt.ShiftModifier:
+                features = self.scene.flat_tree
+                if QtWidgets.QApplication.keyboardModifiers() == Qt.ShiftModifier:
+                    for f in features:
+                        if f.hit(self, pos):
+                            f.selected = True
+                            break
+                elif QtWidgets.QApplication.keyboardModifiers() == Qt.ControlModifier:
+                    for f in features:
+                        if f.hit(self, pos):
+                            f.selected = not f.selected
+                            break
+                else: 
+
+                    for f in features:
+                        if f.hit(self, pos):
+                            if not f.selected:
+                                for f2 in features:
+                                    f2.selected = False
+                            f.selected = True
+                            break
+                    else:
+                        for f2 in features:
+                            f2.selected = False
+
                 for f in features:
-                    if f.hit(self, pos):
-                        f.selected = True
-                        break
-            elif QtWidgets.QApplication.keyboardModifiers() == Qt.ControlModifier:
-                for f in features:
-                    if f.hit(self, pos):
-                        f.selected = not f.selected
-                        break
-            else: 
+                    if f.selected:
+                        f.start_drag(self, scene_pos)
+                self.update_fn()
+            elif self.mode == "create":
+                self.create.mousePressEvent(self, scene_pos)
 
-                for f in features:
-                    if f.hit(self, pos):
-                        if not f.selected:
-                            for f2 in features:
-                                f2.selected = False
-                        f.selected = True
-                        break
-                else:
-                    for f2 in features:
-                        f2.selected = False
-
-            for f in features:
-                if f.selected:
-                    f.start_drag(self, self.drag_features)
-
-            self.update_fn()
         elif event.button() == Qt.MiddleButton:
-            self.drag_view = np.array([event.x(), event.y()])
+            self.drag_view = pos
 
     def mouseReleaseEvent(self, event):
         if event.button() == Qt.LeftButton:
-            self.drag_features = None
+            pos = np.array([event.x(), event.y()]) / self.dpi_scale
+            scene_pos = np.array([self.ixfx(pos[0]), self.ixfy(pos[1])])
+            if self.mode == "select":
+                self.drag_features = None
+            elif self.mode == "create":
+                self.create.mouseReleaseEvent(self, scene_pos)
         elif event.button() == Qt.MiddleButton:
             self.drag_view = None
 
     def mouseMoveEvent(self, event):
-        if self.drag_features is not None:
-            pos = np.array([event.x(), event.y()]) / self.dpi_scale
-            pos = np.array([self.ixfx(pos[0]), self.ixfy(pos[1])])
+        pos = np.array([event.x(), event.y()]) / self.dpi_scale
+        scene_pos = np.array([self.ixfx(pos[0]), self.ixfy(pos[1])])
 
+        if self.mode == "create":
+            self.create.mouseMoveEvent(self, scene_pos)
+
+        elif self.drag_features is not None:
             for f in self.scene.flat_tree:
                 if f.selected:
-                    f.drag(self, pos)
+                    f.drag(self, scene_pos)
             self.update_fn()
 
-        if self.drag_view is not None:
-            pos = np.array([event.x(), event.y()])
-            d = (pos - self.drag_view) / self.dpi_scale
+        elif self.drag_view is not None:
+            d = (pos - self.drag_view)
             self.translate += d / self.scale
             self.drag_view = pos
             self.update_fn()
@@ -228,7 +250,19 @@ class FeatureTree(QtWidgets.QTreeWidget):
                     self.scene.delete(f)
             self.update_fn()
 
+def add_menus(mb):
+    create_menu = mb.addMenu("&Create")
+    for fc in featurecreator.available:
+        action = QtWidgets.QAction(fc.__name__, create_menu)
+        def wrap(fc_):
+            return lambda:fc_(canvas)
+        action.triggered.connect(wrap(fc))
+        create_menu.addAction(action)
+
 def main():
+    global scene
+    global canvas
+
     app = QtWidgets.QApplication(sys.argv)
 
     w = QtWidgets.QMainWindow()
@@ -248,6 +282,9 @@ def main():
     splitter.addWidget(canvas)
 
     w.setCentralWidget(splitter)
+
+    add_menus(w.menuBar())
+
     w.show()
 
     scene.children = [

@@ -5,18 +5,12 @@ from PyQt5.QtCore import Qt
 import numpy as np
 
 class Feature:
-    def __init__(self, parent=None):
+    def __init__(self, scene=None):
         self.selected = False
-        self.parent = parent
+        self.scene = scene
         self.constraints = []
-
-    @property
-    def flat_tree(self):
-        return [c2 for c in self.children for c2 in c.flat_tree] + [self]
-
-    @property
-    def children(self):
-        return []
+        self.dependents = []
+        self.dependees = []
 
     def hit(self, canvas, pos):
         return any([c.hit(canvas, pos) for c in self.children])
@@ -24,11 +18,25 @@ class Feature:
     def draw(self, canvas, event, qp, **kwargs):
         pass
 
-    def delete_constraints(self):
-        for c in self.constraints[:]:
+    def delete(self):
+        constraints = self.constraints[:]
+        dependents = self.children + self.dependents
+        dependees = self.dependees[:]
+        for c in constraints:
             c.system.delete_constraint(c)
-        for c in self.children:
-            c.delete_constraints()
+        for d in dependents:
+            print("Deleting dependent", d)
+            d.delete()
+        for d in dependees:
+            if self in d.dependents:
+                d.dependents.remove(self)
+        self.dependents = []
+        self.dependees = []
+
+    def depends_on(self, dependees):
+        self.dependees = self.dependees + list(dependees)
+        for dependee in dependees:
+            dependee.dependents.append(self)
 
     def __str__(self):
         return "{}".format(self.__class__.__name__)
@@ -79,27 +87,19 @@ class Line(Feature):
         super().__init__(**kwargs)
         if len(args) == 2:
             self.p1, self.p2 = args
-            self._children = []
         elif len(args) == 4:
             (x1, y1, x2, y2) = args
             self.p1 = Point(x1, y1, parent=self)
             self.p2 = Point(x2, y2, parent=self)
-            self._children = [self.p1, self.p2]
         else:
             raise TypeError("Line takes 2 or 4 arguments")
         self.handle_size = 10
-
-    @property
-    def children(self):
-        return self._children
 
     def draw(self, canvas, event, qp, **kwargs):
         selected = kwargs.get("selected", self.selected)
 
         qp.setPen(QtGui.QPen(canvas.line_color_selected if selected else canvas.line_color, canvas.line_width))
         qp.drawLine(canvas.xfx(self.p1.x.value), canvas.xfy(self.p1.y.value), canvas.xfx(self.p2.x.value), canvas.xfy(self.p2.y.value))
-        for c in self._children:
-            c.draw(canvas, event, qp, **kwargs)
 
     def hit(self, canvas, pos):
         p1 = np.array([canvas.xfx(self.p1.x.value), canvas.xfy(self.p1.y.value)])
@@ -120,9 +120,6 @@ class Line(Feature):
     def drag(self, canvas, pos):
         self.p1.drag(canvas, pos)
         self.p2.drag(canvas, pos)
-
-    def delete_child(self, child):
-        self.parent.delete_child(self)
 
 class Edge(Line):
     def __init__(self, p1, p2, **kwargs):
@@ -168,7 +165,7 @@ class Polygon(Feature):
         newp = Point(x, y, parent=self)
         l1 = Edge(self.ls[i - 1].p2, newp, parent=self)
         l2 = Edge(newp, self.ls[(i + 1) % len(self.ls)].p1, parent=self)
-        self.ls[i].delete_constraints()
+        self.ls[i].delete()
         del self.ls[i]
         self.ls.insert(i, l1)
         self.ls.insert(i + 1, l2)
@@ -181,9 +178,9 @@ class Polygon(Feature):
             else:
                 i = self.ps.index(c)
                 self.ls[i - 1].p2 = self.ls[i].p2
-                self.ps[i].delete_constraints()
-                self.ls[i].delete_constraints()
-                self.ls[i - 1].delete_constraints()
+                self.ps[i].delete()
+                self.ls[i].delete()
+                self.ls[i - 1].delete()
                 del self.ps[i]
                 del self.ls[i]
 
@@ -193,9 +190,9 @@ class Polygon(Feature):
             else:
                 i = self.ls.index(c)
                 self.ls[i - 1].p2 = self.ls[(i + 1) % len(self.ps)].p1
-                self.ps[i].delete_constraints()
-                self.ps[(i + 1) % len(self.ps)].delete_constraints()
-                self.ls[i].delete_constraints()
+                self.ps[i].delete()
+                self.ps[(i + 1) % len(self.ps)].delete()
+                self.ls[i].delete()
                 del self.ps[i]
                 del self.ls[i]
 
@@ -225,6 +222,9 @@ class Scene(Feature):
             f.constraints.remove(constraint)
         self.constraints.remove(constraint)
 
+    def add_child(self, child):
+        self._children.append(child)
+
     def delete_child(self, child):
-        child.delete_constraints()
+        child.delete()
         self._children.remove(child)
