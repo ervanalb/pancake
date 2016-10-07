@@ -12,29 +12,31 @@ class Feature:
         self.dependents = []
         self.dependees = []
 
-    def hit(self, canvas, pos):
-        return any([c.hit(canvas, pos) for c in self.children])
-
     def draw(self, canvas, event, qp, **kwargs):
         pass
 
     def delete(self):
-        constraints = self.constraints[:]
-        dependents = self.children + self.dependents
-        dependees = self.dependees[:]
-        for c in constraints:
-            c.system.delete_constraint(c)
-        for d in dependents:
-            print("Deleting dependent", d)
-            d.delete()
-        for d in dependees:
-            if self in d.dependents:
+        for c in self.constraints[:]:
+            if c in self.constraints:
+                c.delete()
+        for d in self.dependents[:]:
+            if d in self.dependents:
+                d.delete()
+        for d in self.dependees[:]:
+            if d in self.dependees:
                 d.dependents.remove(self)
+
+        if self.scene is not None and self in self.scene.features:
+            self.scene.features.remove(self)
+
+        # Do not use this object after this point
+        self.scene = None
+        self.constraints = []
         self.dependents = []
         self.dependees = []
 
     def depends_on(self, dependees):
-        self.dependees = self.dependees + list(dependees)
+        self.dependees += list(dependees)
         for dependee in dependees:
             dependee.dependents.append(self)
 
@@ -83,16 +85,11 @@ class Point(Feature):
         self.y.value = new_pos[1]
 
 class Line(Feature):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, p1, p2, **kwargs):
         super().__init__(**kwargs)
-        if len(args) == 2:
-            self.p1, self.p2 = args
-        elif len(args) == 4:
-            (x1, y1, x2, y2) = args
-            self.p1 = Point(x1, y1, parent=self)
-            self.p2 = Point(x2, y2, parent=self)
-        else:
-            raise TypeError("Line takes 2 or 4 arguments")
+        self.p1 = p1
+        self.p2 = p2
+        self.depends_on((p1, p2))
         self.handle_size = 10
 
     def draw(self, canvas, event, qp, **kwargs):
@@ -121,110 +118,20 @@ class Line(Feature):
         self.p1.drag(canvas, pos)
         self.p2.drag(canvas, pos)
 
-class Edge(Line):
-    def __init__(self, p1, p2, **kwargs):
-        super().__init__(p1, p2, **kwargs)
-
-    @property
-    def actions(self):
-        return (("split", lambda:self.parent.split_edge(self)),)
-
-class Polygon(Feature):
-    def __init__(self, points, **kwargs):
-        super().__init__(**kwargs)
-        assert len(points) >= 2
-        self.ps = [Point(p[0], p[1], parent=self) for p in points]
-        self.ls = [Edge(p1, p2, parent=self) for (p1, p2) in zip(self.ps[0:-1], self.ps[1:])] + [Edge(self.ps[-1], self.ps[0], parent=self)]
-
-    def __str__(self):
-        return "{}({})".format(self.__class__.__name__, len(self.ps))
-
-    @property
-    def children(self):
-        return self.ps + self.ls
-
-    def start_drag(self, canvas, pos):
-        for p in self.ps:
-            p.start_drag(canvas, pos)
-
-    def drag(self, canvas, pos):
-        for p in self.ps:
-            p.drag(canvas, pos)
-
-    def draw(self, canvas, event, qp, **kwargs):
-        if "selected" not in kwargs and self.selected:
-            kwargs["selected"] = True
-
-        for c in self.ls + self.ps:
-            c.draw(canvas, event, qp, **kwargs)
-
-    def split_edge(self, edge):
-        i = self.ls.index(edge)
-        x = (edge.p1.x.value + edge.p2.x.value) / 2
-        y = (edge.p1.y.value + edge.p2.y.value) / 2
-        newp = Point(x, y, parent=self)
-        l1 = Edge(self.ls[i - 1].p2, newp, parent=self)
-        l2 = Edge(newp, self.ls[(i + 1) % len(self.ls)].p1, parent=self)
-        self.ls[i].delete()
-        del self.ls[i]
-        self.ls.insert(i, l1)
-        self.ls.insert(i + 1, l2)
-        self.ps.insert(i + 1, newp)
-
-    def delete_child(self, c):
-        if c in self.ps:
-            if len(self.ps) == 2:
-                self.parent.delete_child(self)
-            else:
-                i = self.ps.index(c)
-                self.ls[i - 1].p2 = self.ls[i].p2
-                self.ps[i].delete()
-                self.ls[i].delete()
-                self.ls[i - 1].delete()
-                del self.ps[i]
-                del self.ls[i]
-
-        elif c in self.ls:
-            if len(self.ls) == 2:
-                self.parent.delete_child(self)
-            else:
-                i = self.ls.index(c)
-                self.ls[i - 1].p2 = self.ls[(i + 1) % len(self.ps)].p1
-                self.ps[i].delete()
-                self.ps[(i + 1) % len(self.ps)].delete()
-                self.ls[i].delete()
-                del self.ps[i]
-                del self.ls[i]
-
-class Scene(Feature):
+class Scene:
     def __init__(self):
         super().__init__()
-        self._children = []
         self.constraints = []
-
-    @property
-    def children(self):
-        return self._children
-
-    @children.setter
-    def children(self, value):
-        self._children = value
+        self.features = []
 
     def draw(self, canvas, event, qp, **kwargs):
-        for c in reversed(self.children):
-            c.draw(canvas, event, qp, **kwargs)
+        for f in reversed(self.features):
+            f.draw(canvas, event, qp, **kwargs)
 
     def add_constraint(self, constraint):
+        constraint.system = self
         self.constraints.append(constraint)
 
-    def delete_constraint(self, constraint):
-        for f in constraint.features:
-            f.constraints.remove(constraint)
-        self.constraints.remove(constraint)
-
-    def add_child(self, child):
-        self._children.append(child)
-
-    def delete_child(self, child):
-        child.delete()
-        self._children.remove(child)
+    def add_feature(self, feature):
+        feature.scene = self
+        self.features.append(feature)

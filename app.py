@@ -76,10 +76,9 @@ class Canvas(QtWidgets.QWidget):
 
         elif self.mode == "select":
             if event.key() == Qt.Key_Delete:
-                to_delete = list(self.scene.flat_tree)
-                for f in to_delete:
-                    if f in self.scene.flat_tree and f.selected:
-                        f.parent.delete_child(f)
+                for f in self.scene.features[:]:
+                    if f.selected:
+                        f.delete()
                 self.update_fn()
 
     def mousePressEvent(self, event):
@@ -90,9 +89,8 @@ class Canvas(QtWidgets.QWidget):
             if self.mode == "select":
                 self.drag_features = scene_pos
 
-                features = self.scene.flat_tree
                 if QtWidgets.QApplication.keyboardModifiers() == Qt.ShiftModifier:
-                    for f in features:
+                    for f in self.scene.features:
                         if f.hit(self, pos):
                             f.selected = True
                             break
@@ -103,18 +101,18 @@ class Canvas(QtWidgets.QWidget):
                             break
                 else: 
 
-                    for f in features:
+                    for f in self.scene.features:
                         if f.hit(self, pos):
                             if not f.selected:
-                                for f2 in features:
+                                for f2 in self.scene.features:
                                     f2.selected = False
                             f.selected = True
                             break
                     else:
-                        for f2 in features:
+                        for f2 in self.scene.features:
                             f2.selected = False
 
-                for f in features:
+                for f in self.scene.features:
                     if f.selected:
                         f.start_drag(self, scene_pos)
                 self.update_fn()
@@ -143,7 +141,7 @@ class Canvas(QtWidgets.QWidget):
             self.create.mouseMoveEvent(self, scene_pos)
 
         elif self.drag_features is not None:
-            for f in self.scene.flat_tree:
+            for f in self.scene.features:
                 if f.selected:
                     f.drag(self, scene_pos)
             self.update_fn()
@@ -155,7 +153,7 @@ class Canvas(QtWidgets.QWidget):
             self.update_fn()
 
     def contextMenuEvent(self, event):
-        selected = [f for f in self.scene.flat_tree if f.selected]
+        selected = [f for f in self.scene.features if f.selected]
         if len(selected) >= 1:
             menu = QtWidgets.QMenu(self)
 
@@ -178,7 +176,7 @@ class Canvas(QtWidgets.QWidget):
             else:
                 for (menu_constraint, constraint_class) in constraint_menu_items:
                     if result == menu_constraint:
-                        self.scene.add_constraint(constraint_class(*selected, system=self.scene))
+                        self.scene.add_constraint(constraint_class(*selected))
                         break
 
             self.update_fn()
@@ -218,25 +216,16 @@ class FeatureTree(QtWidgets.QTreeWidget):
 
     def update(self):
         self.updating = True
-        to_expand = []
         to_select = []
-        def treeify(f):
-            if not hasattr(f, "q_expanded"):
-                f.q_expanded = False
+
+        def widget(f):
             item = QtWidgets.QTreeWidgetItem([str(f)])
-            if f.q_expanded:
-                to_expand.append(item)
             if f.selected:
                 to_select.append(item)
-            item.feature = f
-            for sub_f in f.children:
-                item.addChild(treeify(sub_f))
             return item
 
         self.clear()
-        self.addTopLevelItems(treeify(self.scene).takeChildren())
-        for item in to_expand:
-            item.setExpanded(True)
+        self.addTopLevelItems([widget(f) for f in self.scene.features])
         for item in to_select:
             item.setSelected(True)
         super().update()
@@ -244,10 +233,9 @@ class FeatureTree(QtWidgets.QTreeWidget):
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key_Delete:
-            to_delete = list(self.scene.flat_tree)
-            for f in to_delete:
-                if f in self.scene.flat_tree and f.selected:
-                    self.scene.delete(f)
+            for f in self.scene.features[:]:
+                if f.selected:
+                    f.delete()
             self.update_fn()
 
 def add_menus(mb):
@@ -287,19 +275,15 @@ def main():
 
     w.show()
 
-    scene.children = [
-        features.Polygon([(0, 0), (10, 0), (10, 10), (0, 10)], parent=scene)
-    ]
-
-    scene.constraints = [
-        constraints.FixedDistance(scene.children[0].ps[0], scene.children[0].ps[1], 10, system=scene),
-        constraints.FixedX(scene.children[0].ps[0], 0, system=scene),
-        constraints.FixedY(scene.children[0].ps[0], 0, system=scene),
-        #constraints.Vertical(scene.children[0].ps[0], scene.children[0].ps[1], system=scene),
-        #constraints.Horizontal(scene.children[0].ps[1], scene.children[0].ps[2], system=scene),
-        #constraints.Vertical(scene.children[0].ps[2], scene.children[0].ps[3], system=scene),
-        #constraints.Horizontal(scene.children[0].ps[3], scene.children[0].ps[0], system=scene)
-    ]
+    #scene.constraints = [
+    #    constraints.FixedDistance(scene.children[0].ps[0], scene.children[0].ps[1], 10, system=scene),
+    #    constraints.FixedX(scene.children[0].ps[0], 0, system=scene),
+    #    constraints.FixedY(scene.children[0].ps[0], 0, system=scene),
+    #    #constraints.Vertical(scene.children[0].ps[0], scene.children[0].ps[1], system=scene),
+    #    #constraints.Horizontal(scene.children[0].ps[1], scene.children[0].ps[2], system=scene),
+    #    #constraints.Vertical(scene.children[0].ps[2], scene.children[0].ps[3], system=scene),
+    #    #constraints.Horizontal(scene.children[0].ps[3], scene.children[0].ps[0], system=scene)
+    #]
 
     update_fn()
 

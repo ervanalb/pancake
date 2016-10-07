@@ -34,8 +34,7 @@ class FeatureCreator:
 
     def add(self, canvas, features):
         for f in features:
-            f.parent = canvas.scene
-            canvas.scene.add_child(f)
+            canvas.scene.add_feature(f)
         canvas.update()
 
     def draw(self, canvas, event, qp):

@@ -4,21 +4,12 @@ import features
 class Constraint:
     def __init__(self, system=None):
         self.system = system
-        self._variables = tuple()
-        self._features = tuple()
+        self.variables = tuple()
+        self.features = list()
 
-    @property
-    def features(self):
-        return self._features
-
-    @features.setter
-    def features(self, value):
-        assert isinstance(value, tuple), ValueError("features must be tuple")
-
-        for f in self._features:
-            f.constraints.remove(self)
-        self._features = value
-        for f in self._features:
+    def add_features(self, features):
+        self.features += list(features)
+        for f in features:
             f.constraints.append(self)
 
     @property
@@ -37,6 +28,16 @@ class Constraint:
     @classmethod
     def compatible(cls, fs):
         return False
+
+    def delete(self):
+        for f in self.features[:]:
+            if f in self.features:
+                f.constraints.remove(self)
+        if system is not None:
+            system.constraints.remove(self)
+
+        # Do not use the constraint after this point
+        self.features = []
 
     def __str__(self):
         return "{}".format(self.__class__.__name__)
